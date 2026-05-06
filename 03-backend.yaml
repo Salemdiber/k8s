@@ -1,0 +1,129 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: algoarena-backend-config
+  namespace: algoarena
+data:
+  NODE_ENV: production
+  PORT: "3000"
+  CORS_ORIGIN: http://algoarena.local
+  FRONTEND_URL: http://algoarena.local
+  COMPLEXITY_MODEL_URL: https://codecomplexity-model.onrender.com
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: algoarena-backend-secrets
+  namespace: algoarena
+type: Opaque
+stringData:
+  MONGO_URI: mongodb://mongo:27017/algoarena
+  JWT_SECRET: change-me-in-production
+  GOOGLE_CLIENT_ID: disabled
+  GOOGLE_CLIENT_SECRET: disabled
+  GITHUB_CLIENT_ID: disabled
+  GITHUB_CLIENT_SECRET: disabled
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: algoarena-backend
+  namespace: algoarena
+spec:
+  replicas: 4
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: algoarena-backend
+  template:
+    metadata:
+      labels:
+        app: algoarena-backend
+    spec:
+      containers:
+        - name: backend
+          image: salemdiber/algo-arena-backend:27
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: algoarena-backend-config
+            - secretRef:
+                name: algoarena-backend-secrets
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/uploads
+          readinessProbe:
+            httpGet:
+              path: /api/system-health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+              ephemeral-storage: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+              ephemeral-storage: 1Gi
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: algoarena-backend-uploads
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: algoarena-backend-uploads-pv
+spec:
+  capacity:
+    storage: 1Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/algoarena/uploads
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - k8s-master
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: algoarena-backend-uploads
+  namespace: algoarena
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: algoarena-backend
+  namespace: algoarena
+spec:
+  type: ClusterIP
+  selector:
+    app: algoarena-backend
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000

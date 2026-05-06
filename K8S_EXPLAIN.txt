@@ -1,0 +1,363 @@
+K8S EXPLANATION - AlgoArena
+===========================
+
+1. Project goal
+---------------
+This folder contains the Kubernetes, monitoring, autoscaling, and CI/CD setup
+for the AlgoArena platform.
+
+AlgoArena is deployed on Kubernetes with:
+- a backend service
+- a frontend service
+- a MongoDB database
+- an NGINX ingress
+- a monitoring stack
+- autoscaling
+- Jenkins CI/CD integration
+
+
+2. Main Kubernetes application manifests
+----------------------------------------
+
+01-namespace.yaml
+- Creates the main namespace: algoarena
+
+02-mongo.yaml
+- Deploys MongoDB used by the application
+
+03-backend.yaml
+- Deploys the backend API
+- Includes ConfigMap + Secret for backend configuration
+- Exposes backend with a ClusterIP service
+- Uses readiness probe on /api/system-health
+- Mounts persistent storage for uploads
+
+03-backend-fixed.yaml
+- Alternative backend manifest
+- Uses emptyDir instead of persistent volume for uploads
+- Useful as a simplified fallback version
+
+04-frontend.yaml
+- Deploys the frontend
+- Uses nginx-config ConfigMap
+- Exposes frontend with a ClusterIP service
+- Uses readiness and liveness probes on /
+
+04-frontend-fixed.yaml
+- Alternative frontend manifest
+- Kept as a fallback variant
+
+05-ingress.yaml
+- Publishes the application through ingress-nginx
+- Routes:
+  /api, /uploads, /socket.io, /chat/ws, /battles/ws, /auth/* -> backend
+  / -> frontend
+
+nginx-config.yaml
+- NGINX config used by frontend container
+- Proxies backend-related paths from frontend side
+
+launch-all.sh
+- Helper script to apply core manifests and verify the deployment
+
+
+3. Monitoring folder
+--------------------
+Path: monitoring/
+
+This folder deploys the observability stack.
+
+00-namespace.yaml
+- Creates namespace: monitoring
+
+01-exporters.yaml
+- node-exporter for node CPU/RAM/disk metrics
+- kube-state-metrics for Kubernetes object metrics
+- blackbox-exporter for HTTP availability probes
+
+02-prometheus.yaml
+- Deploys Prometheus
+- Scrapes node-exporter, kube-state-metrics, blackbox-exporter
+- Contains alert rules for AlgoArena and infrastructure
+
+03-grafana.yaml
+- Deploys Grafana
+- Provisions Prometheus datasource
+- Provisions Loki datasource
+- Loads the AlgoArena dashboard automatically
+
+04-alertmanager.yaml
+- Deploys Alertmanager
+- Sends alerts by Gmail using a Kubernetes Secret
+
+05-loki.yaml
+- Deploys Loki for centralized logs
+- Deploys Promtail to collect pod logs and send them to Loki
+
+06-prometheus-pushgateway.yaml
+- Deploys Pushgateway
+- Used by Jenkins CD jobs to push deployment metrics
+
+06-cicd-rules.yaml
+- Prometheus alert rules related to CI/CD metrics and deployment failures
+
+07-cicd-servicemonitor.yaml
+- Connects CI/CD metrics exposure to Prometheus scraping
+
+08-cicd-grafana-dashboard.yaml
+- Grafana dashboard dedicated to CI/CD visibility
+
+README.md
+- General monitoring installation and usage guide
+
+CICD-INTEGRATION.md
+- Details of how Jenkins is integrated with Prometheus and Alertmanager
+
+QUICKSTART-CICD.md
+- Quick setup guide for CI/CD observability
+
+apply-monitoring.sh
+- Applies the monitoring stack and waits for rollouts
+
+export-metrics.sh
+- Helper script for metrics export
+
+launch-monitoring-fake-alert.sh
+- Test script to fire a fake alert for demonstration
+
+
+4. What monitoring currently provides
+-------------------------------------
+
+Prometheus:
+- Collects infrastructure and Kubernetes metrics
+- Evaluates alert rules
+
+Grafana:
+- Visualizes application and infrastructure metrics
+- Uses Prometheus and Loki datasources
+
+Alertmanager:
+- Receives alerts from Prometheus
+- Sends notifications by Gmail
+
+Loki:
+- Centralizes pod logs
+
+Promtail:
+- Reads Kubernetes container log files
+- Pushes them to Loki
+
+Pushgateway:
+- Receives CI/CD deployment metrics from Jenkins
+
+
+5. Current Prometheus alert rules
+---------------------------------
+
+Application alerts:
+- AlgoArenaBackendDown
+- AlgoArenaFrontendDown
+- AlgoArenaDeploymentMissingReplicas
+
+Infrastructure alerts:
+- KubernetesNodeMemoryHigh
+- KubernetesNodeDiskHigh
+
+CI/CD alerts:
+- Additional rules are defined in 06-cicd-rules.yaml
+
+Note:
+- The current base alerts do not yet fully cover worker NotReady states unless
+  extra node alerts are added.
+
+
+6. Loki demonstration
+---------------------
+Loki is working.
+
+Example LogQL queries:
+- {namespace="algoarena"}
+- {namespace="algoarena", app="algoarena-backend"}
+- {namespace="algoarena", app="algoarena-frontend"}
+
+What this proves:
+- logs from AlgoArena pods are collected centrally
+- logs can be filtered by namespace, app, pod, container
+
+
+7. Autoscaling folder
+---------------------
+Path: autoscaling/
+
+00-metrics-server.yaml
+- Deploys metrics-server
+- Required for HPA CPU/memory metrics
+
+01-hpa.yaml
+- Creates HPA for:
+  - algoarena-backend
+  - algoarena-frontend
+- Uses CPU and memory utilization
+
+apply-autoscaling.sh
+- Applies metrics-server
+- Waits for metrics API
+- Applies HPA manifests
+
+README.md
+- Explains how autoscaling is installed and verified
+
+
+8. Current HPA behavior
+-----------------------
+
+Backend HPA:
+- minReplicas: 2
+- maxReplicas: 4
+- CPU target: 70%
+- Memory target: 80%
+
+Frontend HPA:
+- minReplicas: 2
+- maxReplicas: 4
+- CPU target: 70%
+- Memory target: 80%
+
+Observed behavior:
+- frontend can scale down to 2 pods when load is low
+- backend stays high when memory usage remains above target
+
+
+9. Jenkins CI/CD folder
+-----------------------
+Paths:
+- back_jenkins/
+- front_jenkins/
+
+back_jenkins/Jenkinsfile
+- Backend CI pipeline
+- Runs tests, build, Sonar analysis
+
+back_jenkins/Jenkinsfile.cd
+- Backend CD pipeline
+- Resolves image tag
+- Applies namespace, MongoDB, backend manifests
+- Updates backend deployment image
+- Runs rollout checks
+- Runs backend + Mongo health checks
+- Pushes deployment metrics to Pushgateway
+- Sends deployment alerts to Alertmanager
+
+front_jenkins/Jenkinsfile
+- Frontend CI pipeline
+- Build and quality related stages
+
+front_jenkins/Jenkinsfile.cd
+- Frontend CD pipeline
+- Resolves image tag
+- Applies namespace, nginx config, frontend manifest, ingress
+- Updates frontend deployment image
+- Runs rollout checks
+- Checks frontend health
+- Waits for backend endpoint before backend health verification
+
+
+10. CI/CD observability integration
+-----------------------------------
+The CD pipelines are integrated with the monitoring stack:
+
+- Jenkins pushes metrics to Pushgateway
+- Prometheus scrapes these metrics
+- Alertmanager receives deployment failure alerts
+- Grafana can visualize CI/CD information
+
+This means the platform monitors not only runtime behavior, but also deployment
+activity.
+
+
+11. Support and utility files
+-----------------------------
+
+backend.yaml
+- Extra backend-related manifest kept in the repository
+
+config.yaml
+- Cluster or Kubernetes configuration helper file
+
+coredns.yaml
+- CoreDNS-related manifest
+
+check-workers.sh
+- Helper script to inspect worker node status
+
+jenk.zip
+- Archive file related to Jenkins work
+
+
+12. Current cluster state
+-------------------------
+
+Healthy parts:
+- AlgoArena application is running on k8s-master
+- Monitoring stack is running on k8s-master
+- Loki works
+- HPA works
+- Alertmanager works
+- CI/CD integration exists
+
+Known issue:
+- worker nodes are currently NotReady
+
+Observed worker state:
+- k8s-worker1: NotReady
+- k8s-worker2: NotReady
+- k8s-worker3: NotReady
+
+Important consequence:
+- the cluster is operational, but effectively concentrated on k8s-master
+- autoscaling changes replica counts, but pods cannot spread to worker nodes
+
+Likely root cause:
+- kubelet heartbeat / network connectivity problems on workers
+- worker2 also has a Flannel CrashLoopBackOff
+
+
+13. What can be demonstrated to a professor
+-------------------------------------------
+
+Application deployment:
+- backend, frontend, MongoDB, ingress
+
+Monitoring:
+- Prometheus alerts page
+- Grafana dashboard
+- Alertmanager
+
+Logging:
+- Loki queries in Grafana Explore
+
+Autoscaling:
+- kubectl get hpa -n algoarena
+- kubectl describe hpa algoarena-backend -n algoarena
+- kubectl describe hpa algoarena-frontend -n algoarena
+- kubectl top pods -n algoarena
+
+CI/CD:
+- Jenkins deploys images automatically
+- Jenkins exports deployment metrics
+- Jenkins sends alerts to Alertmanager on deployment failure
+
+
+14. Suggested presentation summary
+----------------------------------
+This folder implements a complete Kubernetes-based deployment for AlgoArena.
+It includes:
+- application deployment manifests
+- ingress and networking
+- observability with Prometheus, Grafana, Alertmanager, Loki, and Promtail
+- autoscaling with metrics-server and HPA
+- Jenkins CI/CD integrated with monitoring and alerting
+
+The main remaining infrastructure issue is worker recovery, but the platform
+and observability stack are already functional on the master node.

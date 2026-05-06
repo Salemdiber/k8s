@@ -1,0 +1,18 @@
+apiVersion: v1
+data:
+  COMPLEXITY_MODEL_URL: https://codecomplexity-model.onrender.com
+  CORS_ORIGIN: http://algoarena.local
+  FRONTEND_URL: http://algoarena.local
+  NODE_ENV: production
+  PORT: "3000"
+  MONGO_URI: mongodb://mongo.algoarena.svc.cluster.local:27017/algoarena
+kind: ConfigMap
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","data":{"COMPLEXITY_MODEL_URL":"https://codecomplexity-model.onrender.com","CORS_ORIGIN":"http://algoarena.local","FRONTEND_URL":"http://algoarena.local","NODE_ENV":"production","PORT":"3000"},"kind":"ConfigMap","metadata":{"annotations":{},"name":"algoarena-backend-config","namespace":"algoarena"}}
+  creationTimestamp: "2026-05-04T01:32:52Z"
+  name: algoarena-backend-config
+  namespace: algoarena
+  resourceVersion: "2508"
+  uid: 668c692d-0e42-4019-9600-f22f442b3e97
