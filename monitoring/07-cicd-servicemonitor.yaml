@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-cicd-scrape-config
+  namespace: monitoring
+data:
+  cicd-scrape.yml: |
+    # Jenkins metrics (if running in cluster or externally)
+    - job_name: jenkins
+      static_configs:
+        - targets:
+            - jenkins.jenkins.svc.cluster.local:8080
+      metrics_path: /prometheus/metrics
+      relabel_configs:
+        - source_labels: [__address__]
+          target_label: instance
+        - replacement: jenkins
+          target_label: job
+
+    # SonarQube metrics
+    - job_name: sonarqube
+      static_configs:
+        - targets:
+            - sonarqube.sonarqube.svc.cluster.local:9000
+      metrics_path: /api/prometheus/metrics
+      scrape_interval: 60s
+      relabel_configs:
+        - source_labels: [__address__]
+          target_label: instance
+        - replacement: sonarqube
+          target_label: job

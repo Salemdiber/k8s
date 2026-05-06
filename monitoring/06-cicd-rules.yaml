@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cicd-prometheus-rules
+  namespace: monitoring
+data:
+  cicd-alerts.yml: |
+    groups:
+      - name: cicd
+        interval: 30s
+        rules:
+          # Alert if backend build fails
+          - alert: BackendBuildFailed
+            expr: increase(cicd_build_failures_total{job="backend"}[5m]) > 0
+            for: 1m
+            labels:
+              severity: critical
+              component: cicd
+            annotations:
+              summary: "Backend build failed"
+              description: "Backend CI/CD pipeline build has failed. Check Jenkins logs."
+              dashboard: "http://grafana.monitoring.svc.cluster.local:3000/d/cicd-pipeline"
+
+          # Alert if frontend build fails
+          - alert: FrontendBuildFailed
+            expr: increase(cicd_build_failures_total{job="frontend"}[5m]) > 0
+            for: 1m
+            labels:
+              severity: critical
+              component: cicd
+            annotations:
+              summary: "Frontend build failed"
+              description: "Frontend CI/CD pipeline build has failed. Check Jenkins logs."
+              dashboard: "http://grafana.monitoring.svc.cluster.local:3000/d/cicd-pipeline"
+
+          # Alert if backend deployment fails
+          - alert: BackendDeploymentFailed
+            expr: increase(cicd_deployment_failures_total{job="backend"}[5m]) > 0
+            for: 1m
+            labels:
+              severity: critical
+              component: cicd
+            annotations:
+              summary: "Backend deployment failed"
+              description: "Backend CD pipeline deployment has failed. Check Kubernetes logs."
+              
+          # Alert if frontend deployment fails
+          - alert: FrontendDeploymentFailed
+            expr: increase(cicd_deployment_failures_total{job="frontend"}[5m]) > 0
+            for: 1m
+            labels:
+              severity: critical
+              component: cicd
+            annotations:
+              summary: "Frontend deployment failed"
+              description: "Frontend CD pipeline deployment has failed. Check Kubernetes logs."
+
+          # Alert if build takes too long (> 30 minutes)
+          - alert: BuildDurationHigh
+            expr: cicd_build_duration_seconds > 1800
+            for: 1m
+            labels:
+              severity: warning
+              component: cicd
+            annotations:
+              summary: "Build duration is high ({{ $value | humanizeDuration }})"
+              description: "Build for {{ $labels.job }} is taking longer than expected"
+
+          # Alert if code quality score is low
+          - alert: CodeQualityLow
+            expr: cicd_sonarqube_quality_gate < 0.7
+            for: 5m
+            labels:
+              severity: warning
+              component: cicd
+            annotations:
+              summary: "Code quality score is low for {{ $labels.job }}"
+              description: "SonarQube quality gate score is {{ $value }}"
+
+          # Alert if deployment success rate is low
+          - alert: DeploymentSuccessRateLow
+            expr: (increase(cicd_deployment_success_total[1h]) / (increase(cicd_deployment_success_total[1h]) + increase(cicd_deployment_failures_total[1h]))) < 0.9
+            for: 5m
+            labels:
+              severity: warning
+              component: cicd
+            annotations:
+              summary: "Deployment success rate is low for {{ $labels.job }}"
+              description: "Success rate is {{ $value | humanizePercentage }}"
+
+          # Alert for test coverage below threshold
+          - alert: TestCoverageLow
+            expr: cicd_test_coverage_percent < 70
+            for: 5m
+            labels:
+              severity: warning
+              component: cicd
+            annotations:
+              summary: "Test coverage is below 70% for {{ $labels.job }}"
+              description: "Current coverage: {{ $value }}%"
